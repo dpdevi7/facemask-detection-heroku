@@ -5,7 +5,7 @@ import os
 
 
 app = Flask(__name__)
-app.config["DEBUG"] = True
+app.config["DEBUG"] = False # for deployment make it False
 
 
 @app.route('/predict', methods=['POST'])
@@ -38,7 +38,6 @@ def predict():
 
     return jsonify(responseObject)
 
-
-if __name__ == "__main__":
-    # app.run(host='127.0.0.1', port=5000)
-    app.run(host='0.0.0.0', port=5000)
+# if __name__ == "__main__":
+#     # app.run(host='127.0.0.1', port=5000)
+#     app.run(host='0.0.0.0', port=5000)
