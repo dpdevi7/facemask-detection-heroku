@@ -9,9 +9,8 @@
 * endpoint: predict
 * request params: (@formdata) filename:imagefile
 * request type: POST
-* response: returns json object of 3 keys: boxes, labels, scores
 
+![Screenshot from 2021-10-16 00-38-53](https://user-images.githubusercontent.com/27999714/137540182-e511e4ce-fa36-418e-a802-1b5058ff733f.png)
 
-![Screenshot from 2021-10-07 00-31-56](https://user-images.githubusercontent.com/27999714/136266497-b65e8e5e-8d8a-48b1-837f-29f38dc6cb97.png)
 
 
