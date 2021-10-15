@@ -9,6 +9,25 @@ from collections import OrderedDict
 
 ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg']
 
+# get Device
+def getDevice():
+    return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+# pretrained inbuilt pytorch ssd-mobilenetV3 model
+def loadModelPretrained():
+    SSD_MODEL = torchvision.models.detection.ssdlite320_mobilenet_v3_large(pretrained=False)
+    checkPoint = torch.load(
+        "model-dir/facemaskDetectionSSD_320x320.pth",
+        map_location=getDevice())
+
+    SSD_MODEL.load_state_dict(checkPoint['model_state_dict'])
+    SSD_MODEL.eval()
+    SSD_MODEL.to(getDevice())
+
+    return SSD_MODEL
+
+
+
 
 def _xavier_normal_init(conv: nn.Module):
     for layer in conv.modules():
@@ -16,8 +35,6 @@ def _xavier_normal_init(conv: nn.Module):
             torch.nn.init.xavier_normal_(layer.weight)
             if layer.bias is not None:
                 torch.nn.init.constant_(layer.bias, 0.0)
-
-
 def _kaiming_normal_init(conv: nn.Module):
     for layer in conv.modules():
         if isinstance(layer, nn.Conv2d):
@@ -188,13 +205,39 @@ def get_ssd_from_checkpoint(modelFile, SSD_MODEL):
     SSD_MODEL.eval()
     return SSD_MODEL
 
-def detectMask(model, imgTensor):
+def get_ssd_from_checkpoint_scripted_module(modelFile, SSD_MODEL):
+    checkpoint = torch.load(modelFile, map_location=torch.device('cpu'))
+    SSD_MODEL.load_state_dict(checkpoint['model_state_dict'])
+    SSD_MODEL.eval()
+    SCRIPTED_SSD_MODEL = torch.jit.script(SSD_MODEL)
+    return SCRIPTED_SSD_MODEL
+
+def detectMaskNonScriptedModule(model, imgTensor):
     out = model(imgTensor)
     keepIndex = torchvision.ops.nms(out[0]['boxes'], out[0]['scores'], iou_threshold=0.8)
     bboxTensors = out[0]['boxes'][keepIndex]
     labelsTensors = out[0]['labels'][keepIndex]
     scoresTensors = out[0]['scores'][keepIndex]
 
+    boxes = bboxTensors.detach().cpu().numpy().astype(np.int)
+    labels = labelsTensors.detach().cpu().numpy()
+    scores = scoresTensors.detach().cpu().numpy()
+
+    return boxes.tolist(), labels.tolist(), scores.tolist()
+
+def detectMaskScriptedModule(model, imgTensor):
+    # 1. scripted module, take list of tensors
+    out = model([imgTensor])
+    # 2. prediction = (loss, detections)
+    predLosses = out[0]
+    predDetections = out[1][0]
+    # 3. NMS
+    keepIndex = torchvision.ops.nms(predDetections['boxes'], predDetections['scores'], iou_threshold=0.2)
+    # 4. get Detections after NMS
+    bboxTensors = predDetections['boxes'][keepIndex]
+    labelsTensors = predDetections['labels'][keepIndex]
+    scoresTensors = predDetections['scores'][keepIndex]
+    # 5. serve to response
     boxes = bboxTensors.detach().cpu().numpy().astype(np.int)
     labels = labelsTensors.detach().cpu().numpy()
     scores = scoresTensors.detach().cpu().numpy()
@@ -208,12 +251,23 @@ def getAllowedFileExtension(filename):
     else:
         return False
 
-def readImage(imageBytes):
+def readImageNonScriptedModule(imageBytes):
+    imageBytesNumpy = np.fromstring(imageBytes, np.uint8)
+    img = cv2.imdecode(imageBytesNumpy, cv2.IMREAD_COLOR).astype(np.float32)
+    img = cv2.resize(img, (320, 320))
+    img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB).astype(np.float32)
+    img = img / 255.0
+    imgTensor = torch.tensor(img, dtype=torch.float32)
+    imgTensor = imgTensor.permute(2,0,1).unsqueeze(dim=0)
+
+    return imgTensor
+
+def readImageScriptedModule(imageBytes):
     imageBytesNumpy = np.fromstring(imageBytes, np.uint8)
     img = cv2.imdecode(imageBytesNumpy, cv2.IMREAD_COLOR).astype(np.float32)
     img = img / 255.0
     imgTensor = torch.tensor(img, dtype=torch.float32)
-    imgTensor = imgTensor.permute(2,0,1).unsqueeze(dim=0)
+    imgTensor = imgTensor.permute(2,0,1)
 
     return imgTensor
 
